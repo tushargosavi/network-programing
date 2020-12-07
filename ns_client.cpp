@@ -6,6 +6,7 @@
 #include <sys/un.h>
 #include <errno.h>
 #include <sys/un.h>
+#include <string.h>
 
 #define SOCK_FILE "sock_file"
 

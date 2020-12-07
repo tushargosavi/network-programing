@@ -5,6 +5,7 @@
 #include <sys/un.h>
 #include <errno.h>
 #include <unistd.h>
+#include <string.h>
 
 #define SOCK_FILE "sock_file"
 int main(int argc, char **argv) {
