@@ -1,4 +1,4 @@
-objects = pipe1 socpair ns_server ns_client list_adapters http_time_server server_udp client_udp server client
+objects = pipe1 socpair ns_server ns_client list_adapters http_time_server server_udp client_udp server client dns_client
 all: $(objects)
 CPP=g++
 CPPFLAGS=-g --std=c++17
