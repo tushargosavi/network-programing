@@ -23,12 +23,15 @@ typedef enum parse_state {
   HTTP_DOT,
   HTTP_2,
   HTTP_SPACE,
+  HTTP_URI_SPACE,
   HTTP_URI_START,
   HTTP_URI,
   HTTP_PROTOCOL,
+  HTTP_VERSION,
   HTTP_START_HEADER,
   HTTP_HEADER,
-  HTTP_BIDY,
+  HTTP_HEADER_VAL,
+  HTTP_BODY,
 } parse_state;
 
 typedef struct http_parse_state {
@@ -37,6 +40,12 @@ typedef struct http_parse_state {
   int len; // data consumed till now
   unsigned char str[MAX_LINE_LEN]; // buffer holding current unprocessed data
   int n;
+
+  char url[1024];
+  int url_len;
+
+  char version[10];
+  int version_len;
 
   char *protocol;
   int retcode;
@@ -101,9 +110,25 @@ int consume_char(struct http_parse_state* s, unsigned char c) {
     case HTTP_P: s->state = (parse_state)expect(c, 'P', HTTP_P); break;
     case HTTP_SPACE: s->state = (parse_state)expect(c, ' ', HTTP_URI); break;
     case HTTP_URI: {
-      if (c != ' ' || c != '\n') s->str[s->n++] = c;
-      if (c == ''
+      if (c != ' ' || c != '\n') s->url[s->url_len++] = c;
+      s->url[s->url_len] = 0;
+      s->state = HTTP_URI_SPACE;
     }
+    case HTTP_URI_SPACE: s->state = (parse_state)expect(c, ' ', HTTP_VERSION); break;
+    case HTTP_VERSION:
+      if (c != ' ' || c != '\n') s->version[s->version_len++] = c; break;
+      s->version[s->version_len] = 0;
+      s->state = HTTP_HEADER;
+    case HTTP_HEADER:
+      if (c == '\n') s->state = HTTP_BODY;
+      if (c != ' ' && c != '=') s->cur_key[s->cur_key++]=c; break;
+      s->cur_key[s->cur_key_len] = 0;
+      s->state = HTTP_HEADER_VAL;
+    case HTTP_HEADER_VAL:
+      if (c != '\n') s->cur_val[c->cur_val_len++] = c ; break;
+      s->state = HTTP_HEADER;
+    
+        
     break;
     default:
       printf("Invalide state");

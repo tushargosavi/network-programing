@@ -6,6 +6,7 @@
 #include <memory.h>
 #include <netdb.h>
 #include <string.h>
+#include <sys/epoll.h>
 
 void handle_client(int);
 void handle_read_from(int);
@@ -21,52 +22,75 @@ int num_clients = 0;
 /* max fd for select call */
 int max_fd = -1;
 
+int s_sock = -1; // server socket
+int epollfd = -1;
 int accept_connection(int sock);
+int setup_connection();
+int event_loop();
+
+// prepare fd for eventloop
+int event_loop_prepare(int fd);
 
 #define MAX(a,b) ((a > b)? a : b)
 
-int main(int argc, char **argv) {
-
+int setup_connection(const char *hostname, const char *port) {
   struct addrinfo hints;
-  struct addrinfo *addrs;
-
+  struct addrinfo *addrs = NULL;
   memset(&hints, 0, sizeof(hints));
-  hints.ai_family = AF_INET;
+  hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
-  int ret = getaddrinfo(NULL, argv[1], &hints, &addrs);
+  hints.ai_flags = 0;
+  hints.ai_protocol = 0;
+
+  int ret = getaddrinfo(hostname, port, &hints, &addrs);
   if (ret < 0) {
     fprintf(stderr, "Unable to get address\n");
     return -1;
   }
 
-  int sock = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol);
-  if (sock < 0) {
+  s_sock = socket(addrs->ai_family, addrs->ai_socktype, addrs->ai_protocol);
+  if (s_sock < 0) {
     perror("Unable to create socket\n");
     fprintf(stderr, "Unable to create socket\n");
     return -1;
   }
 
-  max_fd = MAX(max_fd, sock);
-  ret = bind(sock, addrs->ai_addr, addrs->ai_addrlen);
+  ret = bind(s_sock, addrs->ai_addr, addrs->ai_addrlen);
   if (ret < 0) {
     perror("Unable to bind");
     return -1;
   }
 
-  ret = listen(sock, 10);
+  ret = listen(s_sock, 10);
   if (ret < 0) {
     perror("Unable to listen");
     return -1;
   }
 
-  printf("started server on %s port \n", argv[1]);
+  printf("started server on %s port \n", hostname);
+  event_loop_prepare(s_sock);
+  return 0;
+}
 
-  // main event loop
+int event_loop_init() {
+  epollfd = epoll_create1(0);
+  return 0;
+}
+
+int event_loop_prepare(int fd) {
+  epoll_event ev;
+  ev.events = EPOLLIN;
+  ev.data.fd = fd;
+  max_fd = MAX(max_fd, fd);
+  return epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &ev);
+}
+
+int event_lopp() {
   while (1) {
     fd_set fds;
 
     FD_ZERO(&fds);
-    FD_SET(sock, &fds);
+    FD_SET(s_sock, &fds);
     for (int i = 0; i < num_clients; i++) {
       FD_SET(clients[i], &fds);
     }
@@ -75,7 +99,7 @@ int main(int argc, char **argv) {
     timeout.tv_sec = 2;
     timeout.tv_usec = 0;
 
-    ret = select(max_fd+1, &fds, 0, 0, &timeout);
+    int ret = select(max_fd+1, &fds, 0, 0, &timeout);
     if (ret < 0) {
       perror("select failed ");
       return -1;
@@ -87,9 +111,9 @@ int main(int argc, char **argv) {
 
     for (int i = 0; i <= max_fd; i++) {
       if (FD_ISSET(i, &fds)) {
-        if (i == sock) {
+        if (i == s_sock) {
           printf("accepting new connection\n");
-          ret = accept_connection(sock);
+          ret = accept_connection(s_sock);
           if (ret < 0) {
             fprintf(stderr,"can't accept connection\n");
             return -1;
@@ -100,8 +124,13 @@ int main(int argc, char **argv) {
       }
     }
   }
+}
 
-  close(sock);
+
+int main(int argc, char **argv) {
+  setup_connection("localhost", "8080");
+  event_loop();
+  close(s_sock);
   return 0;
 }
 
